@@ -1,0 +1,5 @@
+{
+    "sp500_recent_days": 0,
+    "sp500_start_date": 20210705,
+    "sp500_update_schedule": "30 17 * * 6"
+}
