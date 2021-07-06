@@ -11,6 +11,7 @@ beautifulsoup4 = "^4.9.3"
 lxml = "^4.6.3"
 pendulum = "^2.1.2"
 apache-airflow = "~2.1.1"
+yfinance = "^0.1.60"
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.13.0"
