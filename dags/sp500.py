@@ -1,9 +1,15 @@
+import logging
+from time import sleep
 from typing import List
 
+import pandas as pd
 import pendulum
+import yfinance as yf
 from airflow.decorators import dag, task
 from airflow.models import Variable
 from airflow.utils.dates import parse_execution_date
+
+logger = logging.getLogger(__name__)
 
 # These args will get passed on to each operator
 # You can override them on a per-task basis during operator initialization
@@ -31,21 +37,42 @@ def sp500_dag():
         #### Get S&P 500 ticker symbols as available from Wikipedia
         Returns a list of ticker symbols, as strings.
         """
-        exec_date = context["execution_date"]
-        time_frame = pendulum.duration(days=int(Variable.get("sp500_recent_days")))
-
-        recent_episodes_date = exec_date - time_frame
-        return [str(recent_episodes_date)]
+        wiki_df = pd.read_html(
+            "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        )[0]
+        symbols = sorted(wiki_df.loc[:, "Symbol"])
+        # TODO: check below GE?
+        if len(symbols) != len(set(symbols)):
+            raise ValueError("S&P500 contains duplicated symbols")
+        return symbols
 
     @task()
-    def get_ticker_data(sp500_symbols: List[str]):
+    def get_ticker_data(sp500_symbols: List[str], **context):
         """
         #### Get ticker data
         TODO
-        partition by : symbol  one file per day, frequency 1m
+        partition by : symbol  one file per day,
         columns: symbol, datetime (UTC), value
         """
-        pass
+        exec_date = context["execution_date"]
+        time_frame = pendulum.duration(days=int(Variable.get("sp500_recent_days")))
+        ticker_interval = f"{int(Variable.get('sp500_ticker_interval_minutes'))}m"
+
+        recent_episodes_date = exec_date - time_frame
+
+        for s in sp500_symbols:
+            logger.info(f"Processing {s}")
+            ticker = yf.Ticker(s)
+            ticker_df = ticker.history(
+                start=recent_episodes_date.to_date_string(),
+                end=exec_date.to_date_string(),
+                interval=ticker_interval,
+            )
+            ticker_df.to_parquet(
+                f"{s}.snappy.parquet", engine="pyarrow", compression="snappy"
+            )
+            sleep(1)
+            return ticker_df  # TODO: how to save files?
 
     @task()
     def get_news(sp500_symbols: List[str]):
