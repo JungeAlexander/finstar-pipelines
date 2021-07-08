@@ -1,0 +1,5 @@
+version: "2"
+services:
+  scheduler:
+    volumes:
+      - ./data/sp500:/usr/local/airflow/data/sp500
