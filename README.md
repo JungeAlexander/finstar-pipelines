@@ -20,3 +20,11 @@ astro version
 ```
 
 AWS CDK as described [here](https://docs.aws.amazon.com/cdk/latest/guide/work-with.html#work-with-prerequisites).
+
+
+## Development
+
+### Debugging airflow DAG
+
+See [here](https://airflow.apache.org/docs/apache-airflow/stable/executor/debug.html) and
+use VSCode launch configuration `"Python: Airflow DAG"` in `.vscode/launch.json`.
