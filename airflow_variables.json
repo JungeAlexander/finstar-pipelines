@@ -1,6 +1,6 @@
 {
     "sp500_output_dir": "/usr/local/airflow/data/sp500",
-    "sp500_recent_days": 0,
+    "sp500_recent_days": 7,
     "sp500_start_date": 20210705,
     "sp500_ticker_interval_minutes": 1,
     "sp500_update_schedule": "30 17 * * 6"
