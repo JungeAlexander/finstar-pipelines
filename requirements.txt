@@ -1,4 +1,5 @@
 finviz==1.4.2
+newsapi-python==0.2.6
 pandas==1.3.0
 pandas-market-calendars==2.0
 pyarrow==4.0.1
