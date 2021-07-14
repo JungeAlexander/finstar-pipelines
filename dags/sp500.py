@@ -3,6 +3,8 @@ from pathlib import Path
 from time import sleep
 from typing import List
 
+import finviz
+import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal
 import pendulum
@@ -55,7 +57,7 @@ def sp500_dag():
         """
         #### Get ticker data from Yfinance
         Only market days are fetched and data are stored locally as Parquet files,
-        partitiioned by stock symbol.
+        partitioned by stock symbol.
         """
         # determine period of interest and market days in period
         exec_date = context["execution_date"]
@@ -106,26 +108,82 @@ def sp500_dag():
                 sleep(1)
 
     @task()
-    def get_news(sp500_symbols: List[str]):
+    def get_news_finviz(sp500_symbols: List[str], **context):
         """
-        #### Get news
-        TODO
-        news for samples from finviz (double-check gamstonk terminal for better sources)
-        (https://towardsdatascience.com/stock-news-sentiment-analysis-with-python-193d4b4378d4)
-        columns: symbol, datetime (UTC), source, link, sentiment_score, headline
-        add sentiment model from nltk or spacy
+        #### Get news from finviz
+        """
+        exec_date = context["execution_date"]
+        period = exec_date - exec_date.subtract(
+            days=int(Variable.get("sp500_recent_days"))
+        )
+        # for each symbol, fetch news for each  day and store them as parquet
+        # files locally
+        output_dir = Path(Variable.get("sp500_output_dir")) / "news" / "finviz"
+        for s in sp500_symbols:
+            logger.info(f"Processing {s}")
+            for current_datetime in period:
+                # Generate UTC datetime for given day with hours, min, sec as zero
+                current_date = pendulum.datetime(
+                    year=current_datetime.year,
+                    month=current_datetime.month,
+                    day=current_datetime.day,
+                )
+                news_fv = finviz.get_news(s)
+                news_fv_df = pd.DataFrame(news_fv)
+                news_fv_df.columns = ["Datetime", "Title", "URL", "Source"]
+                news_fv_df.insert(0, "Symbol", s)
+                news_fv_df.insert(3, "Description", pd.NA)
+                news_fv_df.insert(5, "Author", pd.NA)
+                news_fv_df = news_fv_df[
+                    [
+                        "Symbol",
+                        "Datetime",
+                        "Title",
+                        "Description",
+                        "Source",
+                        "Author",
+                        "URL",
+                    ]
+                ]
+                news_fv_df["Datetime"] = pd.to_datetime(news_fv_df["Datetime"])
+                news_fv_df["Datetime"] = news_fv_df["Datetime"].dt.tz_localize(
+                    "US/Eastern"
+                )
+                news_fv_df["Datetime"] = news_fv_df["Datetime"].dt.tz_convert("UTC")
+                news_fv_df = news_fv_df.loc[
+                    (
+                        np.logical_and(
+                            current_date <= news_fv_df["Datetime"],
+                            news_fv_df["Datetime"]
+                            < current_date + pendulum.duration(days=1),
+                        )
+                    ),
+                    :,
+                ]
+                news_fv_df.sort_values(by=["Datetime"], inplace=True, ascending=True)
+                news_fv_df.reset_index(inplace=True, drop=True)
+
+                current_out_dir = output_dir / f"Symbol={s}"
+                current_out_dir.mkdir(parents=True, exist_ok=True)
+                news_fv_df.to_parquet(
+                    current_out_dir
+                    / f"{current_date.date().to_date_string()}.snappy.parquet",
+                    engine="pyarrow",
+                    compression="snappy",
+                )
+                sleep(1)
+
+    @task()
+    def get_news_newsapi(sp500_symbols: List[str], **context):
+        """
+        #### Get news from News API
         """
         pass
 
     ticker_symbols = get_ticker_symbols()
     get_ticker_data(ticker_symbols)
-    get_news(ticker_symbols)
+    get_news_finviz(ticker_symbols)
+    get_news_newsapi(ticker_symbols)
 
 
 d = sp500_dag()
-
-if __name__ == "__main__":
-    from airflow.utils.state import State
-
-    d.clear(dag_run_state=State.NONE)
-    d.run()
