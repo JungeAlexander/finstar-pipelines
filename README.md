@@ -28,3 +28,9 @@ AWS CDK as described [here](https://docs.aws.amazon.com/cdk/latest/guide/work-wi
 
 See [here](https://airflow.apache.org/docs/apache-airflow/stable/executor/debug.html) and
 use VSCode launch configuration `"Python: Airflow DAG"` in `.vscode/launch.json`.
+
+### Environement variables
+
+Set the following in `.env`:
+
+- `NEWS_API_TOKEN`: API token from https://newsapi.org; Airflow variable name: `news_api_key`

@@ -1,4 +1,5 @@
 {
+    "news_api_key": "TODO insert NEWS_API_TOKEN vom .env",
     "sp500_output_dir": "/usr/local/airflow/data/sp500",
     "sp500_recent_days": 7,
     "sp500_start_date": 20210705,
