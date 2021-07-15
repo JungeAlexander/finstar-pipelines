@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 from time import sleep
-from typing import List
+from typing import Dict, List, Tuple
 
 import finviz
 import numpy as np
@@ -11,6 +11,7 @@ import pendulum
 import yfinance as yf
 from airflow.decorators import dag, task
 from airflow.models import Variable
+from pendulum.date import Date
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,17 @@ default_args = {
     "owner": "airflow",
     "retries": 0,
 }
+
+
+def get_start_end_dates(exec_date: Date) -> Tuple[Date, str, Date, str]:
+    period = exec_date.substract(days=1) - exec_date.subtract(
+        days=int(Variable.get("sp500_recent_days"))
+    )
+    start_date = period.start.date()
+    start_date_str = start_date.to_date_string()
+    end_date = period.end.date()
+    end_date_str = end_date.to_date_string()
+    return start_date, start_date_str, end_date, end_date_str
 
 
 @dag(
@@ -59,119 +71,117 @@ def sp500_dag():
         Only market days are fetched and data are stored locally as Parquet files,
         partitioned by stock symbol.
         """
-        # determine period of interest and market days in period
-        exec_date = context["execution_date"]
-        period = exec_date - exec_date.subtract(
-            days=int(Variable.get("sp500_recent_days"))
+        start_date, start_date_str, end_date, end_date_str = get_start_end_dates(
+            context["execution_date"]
         )
+        # determine market days in period
         market_cal = mcal.get_calendar("NYSE")
         market_days = market_cal.schedule(
-            start_date=period.start.date(), end_date=period.end.date()
+            start_date=start_date, end_date=end_date
         ).index
-        market_days = {
-            pendulum.Date(year=n.year, month=n.month, day=n.day) for n in market_days
-        }
+        market_days = {Date(year=n.year, month=n.month, day=n.day) for n in market_days}
 
         ticker_interval = f"{int(Variable.get('sp500_ticker_interval_minutes'))}m"
 
-        # for each symbol, fetch data for each market day and store them as parquet
-        # files locally
+        # for each symbol, fetch data and store them as parquet files locally
         output_dir = Path(Variable.get("sp500_output_dir")) / "ticker_data"
         for s in sp500_symbols:
             logger.info(f"Processing {s}")
             ticker = yf.Ticker(s)
-            for current_date in period:
-                if current_date.date() not in market_days:
-                    continue
-                current_date_string = current_date.to_date_string()
-                next_date_string = (
-                    current_date + pendulum.duration(days=1)
-                ).to_date_string()
-                ticker_df = ticker.history(
-                    start=current_date_string,
-                    end=next_date_string,
-                    interval=ticker_interval,
-                )
-                # TODO: check above for at least some data via great expectations etc?
+            ticker_df = ticker.history(
+                start=start_date_str,
+                end=end_date_str,
+                interval=ticker_interval,
+            )
+            # TODO: check above for at least some data for market days via great expectations etc?
+            # To determine if a day is a market day, use:
+            # for current_date in period:
+            #     if current_date.date() in market_days:
 
-                ticker_df = ticker_df.tz_convert("UTC", level=0)
-                ticker_df.reset_index(inplace=True)
-                ticker_df.insert(0, "Symbol", s)
+            ticker_df = ticker_df.tz_convert("UTC", level=0)
+            ticker_df.reset_index(inplace=True)
+            ticker_df.insert(0, "Symbol", s)
 
-                current_out_dir = output_dir / f"Symbol={s}"
-                current_out_dir.mkdir(parents=True, exist_ok=True)
-                ticker_df.to_parquet(
-                    current_out_dir / f"{current_date_string}.snappy.parquet",
-                    engine="pyarrow",
-                    compression="snappy",
-                )
-                sleep(1)
+            current_out_dir = output_dir / f"Symbol={s}"
+            current_out_dir.mkdir(parents=True, exist_ok=True)
+            ticker_df.to_parquet(
+                current_out_dir / f"{start_date_str}_{end_date_str}.snappy.parquet",
+                engine="pyarrow",
+                compression="snappy",
+            )
+            sleep(1)
 
     @task()
     def get_news_finviz(sp500_symbols: List[str], **context):
         """
         #### Get news from finviz
         """
-        exec_date = context["execution_date"]
-        period = exec_date - exec_date.subtract(
-            days=int(Variable.get("sp500_recent_days"))
+        start_date, start_date_str, end_date, end_date_str = get_start_end_dates(
+            context["execution_date"]
         )
+        # Generate UTC datetime for given start and end days for comparison later
+        start_datetime = pendulum.datetime(
+            year=start_date.year,
+            month=start_date.month,
+            day=start_date.day,
+        )
+        end_datetime = pendulum.datetime(
+            year=end_date.year,
+            month=end_date.month,
+            day=end_date.day,
+            hour=23,
+            minute=59,
+            second=59,
+            microsecond=999999,
+        )
+
         # for each symbol, fetch news for each  day and store them as parquet
         # files locally
         output_dir = Path(Variable.get("sp500_output_dir")) / "news" / "finviz"
         for s in sp500_symbols:
             logger.info(f"Processing {s}")
-            for current_datetime in period:
-                # Generate UTC datetime for given day with hours, min, sec as zero
-                current_date = pendulum.datetime(
-                    year=current_datetime.year,
-                    month=current_datetime.month,
-                    day=current_datetime.day,
-                )
-                news_fv = finviz.get_news(s)
-                news_fv_df = pd.DataFrame(news_fv)
-                news_fv_df.columns = ["Datetime", "Title", "URL", "Source"]
-                news_fv_df.insert(0, "Symbol", s)
-                news_fv_df.insert(3, "Description", pd.NA)
-                news_fv_df.insert(5, "Author", pd.NA)
-                news_fv_df = news_fv_df[
-                    [
-                        "Symbol",
-                        "Datetime",
-                        "Title",
-                        "Description",
-                        "Source",
-                        "Author",
-                        "URL",
-                    ]
-                ]
-                news_fv_df["Datetime"] = pd.to_datetime(news_fv_df["Datetime"])
-                news_fv_df["Datetime"] = news_fv_df["Datetime"].dt.tz_localize(
-                    "US/Eastern"
-                )
-                news_fv_df["Datetime"] = news_fv_df["Datetime"].dt.tz_convert("UTC")
-                news_fv_df = news_fv_df.loc[
-                    (
-                        np.logical_and(
-                            current_date <= news_fv_df["Datetime"],
-                            news_fv_df["Datetime"]
-                            < current_date + pendulum.duration(days=1),
-                        )
-                    ),
-                    :,
-                ]
-                news_fv_df.sort_values(by=["Datetime"], inplace=True, ascending=True)
-                news_fv_df.reset_index(inplace=True, drop=True)
 
-                current_out_dir = output_dir / f"Symbol={s}"
-                current_out_dir.mkdir(parents=True, exist_ok=True)
-                news_fv_df.to_parquet(
-                    current_out_dir
-                    / f"{current_date.date().to_date_string()}.snappy.parquet",
-                    engine="pyarrow",
-                    compression="snappy",
-                )
-                sleep(1)
+            news_fv = finviz.get_news(s)
+            news_fv_df = pd.DataFrame(news_fv)
+            # TODO: check above for at least some news returned via great expectations etc?
+            news_fv_df.columns = ["Datetime", "Title", "URL", "Source"]
+            news_fv_df.insert(0, "Symbol", s)
+            news_fv_df.insert(3, "Description", pd.NA)
+            news_fv_df.insert(5, "Author", pd.NA)
+            news_fv_df = news_fv_df[
+                [
+                    "Symbol",
+                    "Datetime",
+                    "Title",
+                    "Description",
+                    "Source",
+                    "Author",
+                    "URL",
+                ]
+            ]
+            news_fv_df["Datetime"] = pd.to_datetime(news_fv_df["Datetime"])
+            news_fv_df["Datetime"] = news_fv_df["Datetime"].dt.tz_localize("US/Eastern")
+            news_fv_df["Datetime"] = news_fv_df["Datetime"].dt.tz_convert("UTC")
+            news_fv_df = news_fv_df.loc[
+                (
+                    np.logical_and(
+                        start_datetime <= news_fv_df["Datetime"],
+                        news_fv_df["Datetime"] <= end_datetime,
+                    )
+                ),
+                :,
+            ]
+            news_fv_df.sort_values(by=["Datetime"], inplace=True, ascending=True)
+            news_fv_df.reset_index(inplace=True, drop=True)
+
+            current_out_dir = output_dir / f"Symbol={s}"
+            current_out_dir.mkdir(parents=True, exist_ok=True)
+            news_fv_df.to_parquet(
+                current_out_dir / f"{start_date_str}_{end_date_str}.snappy.parquet",
+                engine="pyarrow",
+                compression="snappy",
+            )
+            sleep(1)
 
     @task()
     def get_news_newsapi(sp500_symbols: List[str], **context):
