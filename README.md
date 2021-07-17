@@ -21,13 +21,26 @@ astro version
 
 AWS CDK as described [here](https://docs.aws.amazon.com/cdk/latest/guide/work-with.html#work-with-prerequisites).
 
+## Running
+
+```
+astro dev start --env astro.env
+```
 
 ## Development
 
-### Debugging airflow DAG
+### Airflow
+
+#### Debugging a DAG
 
 See [here](https://airflow.apache.org/docs/apache-airflow/stable/executor/debug.html) and
 use VSCode launch configuration `"Python: Airflow DAG"` in `.vscode/launch.json`.
+
+#### Deleting a DAG
+
+```
+airflow dags delete dag_id
+```
 
 ### Environement variables
 
