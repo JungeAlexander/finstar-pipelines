@@ -24,7 +24,7 @@ default_args = {
 
 
 def get_start_end_dates(exec_date: Date) -> Tuple[Date, str, Date, str]:
-    period = exec_date.substract(days=1) - exec_date.subtract(
+    period = exec_date.subtract(days=1) - exec_date.subtract(
         days=int(Variable.get("sp500_recent_days"))
     )
     start_date = period.start.date()
@@ -36,8 +36,8 @@ def get_start_end_dates(exec_date: Date) -> Tuple[Date, str, Date, str]:
 
 @dag(
     default_args=default_args,
-    schedule_interval=Variable.get("sp500_update_schedule"),
-    start_date=pendulum.parse(Variable.get("sp500_start_date")),
+    schedule_interval="45 7 * * *",
+    start_date=pendulum.parse("20210710"),
     catchup=True,
 )
 def sp500_dag():
@@ -183,17 +183,17 @@ def sp500_dag():
             )
             sleep(1)
 
-    @task()
-    def get_news_newsapi(sp500_symbols: List[str], **context):
-        """
-        #### Get news from News API
-        """
-        pass
+    # @task()
+    # def get_news_newsapi(sp500_symbols: List[str], **context):
+    #     """
+    #     #### Get news from News API
+    #     """
+    #     pass
 
     ticker_symbols = get_ticker_symbols()
     get_ticker_data(ticker_symbols)
     get_news_finviz(ticker_symbols)
-    get_news_newsapi(ticker_symbols)
+    # get_news_newsapi(ticker_symbols)
 
 
 d = sp500_dag()
