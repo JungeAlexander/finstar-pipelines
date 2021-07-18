@@ -36,8 +36,8 @@ def get_start_end_dates(exec_date: Date) -> Tuple[Date, str, Date, str]:
 
 @dag(
     default_args=default_args,
-    schedule_interval="45 7 * * *",
-    start_date=pendulum.parse("20210710"),
+    schedule_interval="50 7 * * *",
+    start_date=pendulum.parse("20210715"),
     catchup=True,
 )
 def sp500_dag():
@@ -90,7 +90,7 @@ def sp500_dag():
             ticker = yf.Ticker(s)
             ticker_df = ticker.history(
                 start=start_date_str,
-                end=end_date_str,
+                end=end_date.add(days=1).to_date_string(),  # yf interval is right-open
                 interval=ticker_interval,
             )
             # TODO: check above for at least some data for market days via great expectations etc?
