@@ -49,7 +49,7 @@ def sp500_dag():
     """
 
     @task()
-    def get_ticker_symbols(**context) -> List[str]:
+    def get_ticker_symbols() -> List[str]:
         """
         #### Get S&P 500 ticker symbols as available from Wikipedia
         Returns a list of ticker symbols, as strings.
