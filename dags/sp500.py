@@ -24,9 +24,7 @@ default_args = {
 
 
 def get_start_end_dates(exec_date: Date) -> Tuple[Date, str, Date, str]:
-    period = exec_date.subtract(days=1) - exec_date.subtract(
-        days=int(Variable.get("sp500_recent_days"))
-    )
+    period = exec_date - exec_date.subtract(days=int(Variable.get("sp500_recent_days")))
     start_date = period.start.date()
     start_date_str = start_date.to_date_string()
     end_date = period.end.date()
