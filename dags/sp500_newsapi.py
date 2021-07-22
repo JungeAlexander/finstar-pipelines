@@ -140,6 +140,7 @@ def sp500_newsapi_dag():
                 compression="snappy",
             )
             # store that this symbol has been processed for coming runs
+            Variable.delete("sp500_newsapi_last_symbol")
             Variable.set("sp500_newsapi_last_symbol", s)
             sleep(1)
 
