@@ -43,6 +43,7 @@ def get_start_end_dates(
     schedule_interval="50 7 * * *",
     start_date=pendulum.parse("20210715"),
     catchup=True,
+    max_active_runs=1,
 )
 def sp500_dag():
     """
