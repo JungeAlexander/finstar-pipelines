@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal
 import pendulum
+import requests
 import yfinance as yf
 from airflow.decorators import dag, task
 from airflow.models import Variable
@@ -146,7 +147,11 @@ def sp500_dag():
         for s in sp500_symbols:
             logger.info(f"Processing {s}")
 
-            news_fv = finviz.get_news(s)
+            try:
+                news_fv = finviz.get_news(s)
+            except requests.exceptions.HTTPError as e:
+                logger.warning(f"Failed for {s}")
+                continue
             news_fv_df = pd.DataFrame(news_fv)
             # TODO: check above for at least some news returned via great expectations etc?
             news_fv_df.columns = ["Datetime", "Title", "URL", "Source"]
